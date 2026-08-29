@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=30.0,
         help="Seconds to wait for the requested messages (default: 30).",
     )
+    parser.add_argument(
+        "--topic",
+        default=None,
+        help="Topic to read. Defaults to KAFKA_RAW_TOPIC / transactions.raw.",
+    )
     return parser
 
 
@@ -114,6 +119,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     config = KafkaConfig.from_env()
+    topic = args.topic or config.raw_topic
     consumer = Consumer(
         {
             "bootstrap.servers": config.bootstrap_servers,
@@ -122,7 +128,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             "enable.auto.commit": False,
         }
     )
-    consumer.subscribe([config.raw_topic])
+    consumer.subscribe([topic])
     try:
         received = consume_and_print(consumer, args.max_messages, args.timeout)
     except (KafkaException, ValueError, json.JSONDecodeError) as exc:
@@ -132,7 +138,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         consumer.close()
 
     print(
-        f"Read {received} message(s) from {config.raw_topic} "
+        f"Read {received} message(s) from {topic} "
         f"via {config.bootstrap_servers}"
     )
     return 0 if received == args.max_messages else 1

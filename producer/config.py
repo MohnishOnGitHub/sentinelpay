@@ -33,6 +33,9 @@ SUPPORTED_COUNTRIES: Tuple[Country, ...] = (
 
 DEFAULT_KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 DEFAULT_KAFKA_RAW_TOPIC = "transactions.raw"
+DEFAULT_KAFKA_VALIDATED_TOPIC = "transactions.validated"
+DEFAULT_KAFKA_DLQ_TOPIC = "transactions.dlq"
+DEFAULT_KAFKA_VALIDATOR_GROUP = "sentinelpay-validator"
 DEFAULT_PRODUCE_RATE = 10.0
 DEFAULT_PRODUCE_COUNT = 100
 
@@ -58,11 +61,14 @@ class KafkaConfig:
     """Kafka connection settings loaded from the environment.
 
     Local defaults match a single-broker development cluster. Override with
-    ``KAFKA_BOOTSTRAP_SERVERS`` and ``KAFKA_RAW_TOPIC`` rather than editing code.
+    environment variables rather than editing code.
     """
 
     bootstrap_servers: str = DEFAULT_KAFKA_BOOTSTRAP_SERVERS
     raw_topic: str = DEFAULT_KAFKA_RAW_TOPIC
+    validated_topic: str = DEFAULT_KAFKA_VALIDATED_TOPIC
+    dlq_topic: str = DEFAULT_KAFKA_DLQ_TOPIC
+    validator_group: str = DEFAULT_KAFKA_VALIDATOR_GROUP
 
     @classmethod
     def from_env(cls) -> KafkaConfig:
@@ -71,4 +77,11 @@ class KafkaConfig:
                 "KAFKA_BOOTSTRAP_SERVERS", DEFAULT_KAFKA_BOOTSTRAP_SERVERS
             ),
             raw_topic=os.environ.get("KAFKA_RAW_TOPIC", DEFAULT_KAFKA_RAW_TOPIC),
+            validated_topic=os.environ.get(
+                "KAFKA_VALIDATED_TOPIC", DEFAULT_KAFKA_VALIDATED_TOPIC
+            ),
+            dlq_topic=os.environ.get("KAFKA_DLQ_TOPIC", DEFAULT_KAFKA_DLQ_TOPIC),
+            validator_group=os.environ.get(
+                "KAFKA_VALIDATOR_GROUP", DEFAULT_KAFKA_VALIDATOR_GROUP
+            ),
         )

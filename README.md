@@ -11,8 +11,9 @@ docker compose up
 ```
 
 Kafka listens on `localhost:9092`, matching `KAFKA_BOOTSTRAP_SERVERS`.
-The compose stack creates `transactions.raw` (1 partition, replication factor 1).
-Auto-create is also enabled. To create the topic by hand:
+The compose stack creates `transactions.raw`, `transactions.validated`, and
+`transactions.dlq` (1 partition, replication factor 1).
+Auto-create is also enabled. To create a topic by hand:
 
 ```bash
 docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
@@ -42,6 +43,41 @@ One-shot equivalent (broker must already be up, or use the script which starts i
 
 ```bash
 ./scripts/smoke_kafka.sh
+```
+
+### Validation demo
+
+With Kafka running, start the validator:
+
+```bash
+python -m validation.service
+```
+
+Publish valid events:
+
+```bash
+python -m producer.app --count 5 --seed 42 --rate 2
+```
+
+Confirm they land on `transactions.validated`:
+
+```bash
+python -m producer.inspect_topic --topic transactions.validated --max-messages 5
+```
+
+Publish one invalid event and confirm the DLQ:
+
+```bash
+python -m producer.publish_invalid --case amount
+python -m producer.inspect_topic --topic transactions.dlq --max-messages 1
+```
+
+`--case` can also be `json`, `enum`, `extra`, `coords`, or `missing`.
+
+One-shot equivalent:
+
+```bash
+./scripts/smoke_validation.sh
 ```
 
 Default `pytest` stays broker-free. Optional broker tests:

@@ -11,7 +11,13 @@ if [[ ! -x "$PYTHON" ]]; then
 fi
 
 echo "==> Starting local Kafka (KRaft)"
-docker compose up -d --wait
+docker compose up -d
+for _ in $(seq 1 40); do
+  if docker inspect --format '{{.State.Health.Status}}' sentinelpay-kafka 2>/dev/null | grep -q healthy; then
+    break
+  fi
+  sleep 2
+done
 
 echo "==> Publishing 10 synthetic events"
 "$PYTHON" -m producer.app --count 10 --seed 42 --rate 2
