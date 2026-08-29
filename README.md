@@ -1,0 +1,51 @@
+# SentinelPay
+
+## Local Kafka Demo
+
+Phase 1C runs a single-node KRaft Kafka broker (no ZooKeeper) for local development.
+
+Start the broker:
+
+```bash
+docker compose up
+```
+
+Kafka listens on `localhost:9092`, matching `KAFKA_BOOTSTRAP_SERVERS`.
+The compose stack creates `transactions.raw` (1 partition, replication factor 1).
+Auto-create is also enabled. To create the topic by hand:
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:9092 \
+  --create --if-not-exists \
+  --topic transactions.raw \
+  --partitions 1 \
+  --replication-factor 1
+```
+
+In a second terminal, publish 10 synthetic events:
+
+```bash
+python -m producer.app --count 10 --seed 42 --rate 2
+```
+
+In a third terminal, print them:
+
+```bash
+python -m producer.inspect_topic --max-messages 10
+```
+
+Expected result: 10 JSON transaction events from `transactions.raw`, each with an
+`account_id` key and `schema_version`.
+
+One-shot equivalent (broker must already be up, or use the script which starts it):
+
+```bash
+./scripts/smoke_kafka.sh
+```
+
+Default `pytest` stays broker-free. Optional broker tests:
+
+```bash
+pytest -m integration
+```

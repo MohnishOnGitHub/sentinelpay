@@ -1,7 +1,8 @@
-"""Defaults for the synthetic transaction generator."""
+"""Defaults for the synthetic transaction generator and Kafka producer."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Tuple
 
@@ -30,6 +31,11 @@ SUPPORTED_COUNTRIES: Tuple[Country, ...] = (
     Country.AU,
 )
 
+DEFAULT_KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+DEFAULT_KAFKA_RAW_TOPIC = "transactions.raw"
+DEFAULT_PRODUCE_RATE = 10.0
+DEFAULT_PRODUCE_COUNT = 100
+
 
 @dataclass(frozen=True)
 class GeneratorConfig:
@@ -45,3 +51,24 @@ class GeneratorConfig:
     num_devices: int = DEFAULT_NUM_DEVICES
     currencies: Tuple[Currency, ...] = field(default=SUPPORTED_CURRENCIES)
     countries: Tuple[Country, ...] = field(default=SUPPORTED_COUNTRIES)
+
+
+@dataclass(frozen=True)
+class KafkaConfig:
+    """Kafka connection settings loaded from the environment.
+
+    Local defaults match a single-broker development cluster. Override with
+    ``KAFKA_BOOTSTRAP_SERVERS`` and ``KAFKA_RAW_TOPIC`` rather than editing code.
+    """
+
+    bootstrap_servers: str = DEFAULT_KAFKA_BOOTSTRAP_SERVERS
+    raw_topic: str = DEFAULT_KAFKA_RAW_TOPIC
+
+    @classmethod
+    def from_env(cls) -> KafkaConfig:
+        return cls(
+            bootstrap_servers=os.environ.get(
+                "KAFKA_BOOTSTRAP_SERVERS", DEFAULT_KAFKA_BOOTSTRAP_SERVERS
+            ),
+            raw_topic=os.environ.get("KAFKA_RAW_TOPIC", DEFAULT_KAFKA_RAW_TOPIC),
+        )

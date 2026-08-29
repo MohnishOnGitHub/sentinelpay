@@ -7,11 +7,11 @@ Downstream validation, Kafka payloads, and feature pipelines should consume
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class Currency(str, Enum):
@@ -108,3 +108,14 @@ class TransactionEvent(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("event_timestamp must be timezone-aware")
         return value
+
+    @field_serializer("amount", when_used="json")
+    def serialize_amount(self, value: Decimal) -> str:
+        """Emit a two-decimal string so JSON never uses binary floats."""
+        return f"{value:.2f}"
+
+    @field_serializer("event_timestamp", when_used="json")
+    def serialize_event_timestamp(self, value: datetime) -> str:
+        """Emit UTC ISO-8601 with a Z suffix, matching DESIGN.md."""
+        utc = value.astimezone(timezone.utc)
+        return utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
