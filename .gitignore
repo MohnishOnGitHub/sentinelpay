@@ -6,3 +6,6 @@ venv/
 *.egg-info/
 .DS_Store
 .env
+.checkpoints/
+spark-warehouse/
+metastore_db/

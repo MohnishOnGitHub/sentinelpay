@@ -80,7 +80,38 @@ One-shot equivalent:
 ./scripts/smoke_validation.sh
 ```
 
-Default `pytest` stays broker-free. Optional broker tests:
+### Spark streaming demo (Phase 2A)
+
+PySpark runs in local mode. A JDK 11 or 17 must be installed and `JAVA_HOME` set.
+There is no Spark cluster in this phase.
+
+```bash
+# Terminal 1
+docker compose up -d
+
+# Terminal 2
+python -m validation.service
+
+# Terminal 3
+python -m streaming.main
+
+# Terminal 4
+python -m producer.app --count 20 --seed 42 --rate 5
+```
+
+Spark prints account window aggregates to the console:
+
+- `account_id`
+- `window_start` / `window_end` (event time)
+- `window_size` (`5m` or `30m`)
+- `txn_count` / `amount_sum`
+
+These map to `txn_count_5m`, `amount_sum_5m`, `txn_count_30m`, and `amount_sum_30m`.
+Watermark default is 10 minutes; checkpoint default is `.checkpoints/streaming`.
+Override with `SPARK_WATERMARK` and `SPARK_CHECKPOINT_DIR`.
+
+Default `pytest` stays broker-free. Spark tests run locally when Java is available.
+Optional broker tests:
 
 ```bash
 pytest -m integration
