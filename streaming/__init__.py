@@ -1,1 +1,1 @@
-"""Spark Structured Streaming ingestion and account-level features."""
+"""Spark Structured Streaming ingestion and account-level behavioral features."""

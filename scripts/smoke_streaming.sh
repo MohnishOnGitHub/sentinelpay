@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Phase 2A Spark streaming smoke. Requires Docker, Java 11/17, and PySpark.
+# Phase 2B Spark streaming smoke. Requires Docker, Java 11/17, and PySpark.
+# Console output should include unique_merchants, unique_devices, location_spread_km,
+# and the window-level risk signals in addition to txn_count / amount_*.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

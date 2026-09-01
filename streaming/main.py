@@ -19,7 +19,7 @@ import pyspark
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from streaming.config import StreamingConfig
+from streaming.config import FeatureConfig, StreamingConfig
 from streaming.features import account_window_features, prepare_events
 from streaming.schema import parse_validated_json
 from streaming.session import create_spark_session
@@ -77,10 +77,12 @@ def read_validated_stream(spark: SparkSession, config: StreamingConfig):
     )
 
 
-def build_feature_stream(raw_value_df, watermark: str):
+def build_feature_stream(
+    raw_value_df, watermark: str, feature_config: FeatureConfig | None = None
+):
     events = parse_validated_json(raw_value_df)
     prepared = prepare_events(events, watermark=watermark)
-    return account_window_features(prepared)
+    return account_window_features(prepared, feature_config)
 
 
 def start_console_query(features, checkpoint_dir: str, trigger_seconds: int):
@@ -89,6 +91,7 @@ def start_console_query(features, checkpoint_dir: str, trigger_seconds: int):
         features.writeStream.outputMode("update")
         .format("console")
         .option("truncate", "false")
+        .option("numRows", "40")
         .option("checkpointLocation", checkpoint_dir)
         .trigger(processingTime=f"{trigger_seconds} seconds")
         .start()
@@ -97,7 +100,7 @@ def start_console_query(features, checkpoint_dir: str, trigger_seconds: int):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Stream validated transactions and print account window features."
+        description="Stream validated transactions and print account behavioral features."
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -121,12 +124,16 @@ def main(argv: list[str] | None = None) -> int:
     spark.sparkContext.setLogLevel("WARN")
     print(
         f"Streaming {config.validated_topic} @ {config.bootstrap_servers} "
-        f"(watermark={config.watermark}, checkpoint={config.checkpoint_dir})",
+        f"(watermark={config.watermark}, checkpoint={config.checkpoint_dir}, "
+        f"high_amount={config.features.high_amount_threshold}, "
+        f"rapid_txn={config.features.rapid_txn_count_threshold}, "
+        f"multi_device={config.features.multi_device_threshold}, "
+        f"location_spread_km={config.features.location_spread_km_threshold})",
         flush=True,
     )
 
     raw = read_validated_stream(spark, config)
-    features = build_feature_stream(raw, config.watermark)
+    features = build_feature_stream(raw, config.watermark, config.features)
     query = start_console_query(features, config.checkpoint_dir, config.trigger_seconds)
     try:
         if args.timeout_seconds > 0:
