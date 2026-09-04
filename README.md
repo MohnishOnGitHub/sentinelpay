@@ -99,11 +99,12 @@ python -m streaming.main
 python -m producer.app --count 20 --seed 42 --rate 5
 ```
 
-Spark prints tumbling event-time account windows to the console. Rows use a
+Spark writes a local Parquet lake and can also print tumbling event-time
+windows to the console when `SPARK_CONSOLE_SINK=true`. Rows use a
 `window_size` of `5m` or `30m`; the columns below map to `*_5m` / `*_30m`
 feature names.
 
-One-shot equivalent (broker, validator, and Spark):
+One-shot equivalent (broker, validator, Spark, and Parquet read-back):
 
 ```bash
 ./scripts/smoke_streaming.sh
@@ -119,8 +120,7 @@ pytest -m integration
 ### Behavioral features (Phase 2B)
 
 All temporal features use `event_timestamp` (UTC), not processing time.
-Watermark default is 10 minutes; checkpoint default is `.checkpoints/streaming`.
-Override with `SPARK_WATERMARK` and `SPARK_CHECKPOINT_DIR`.
+Watermark default is 10 minutes. Override with `SPARK_WATERMARK`.
 
 Windows are **tumbling**, not sliding. A transaction at 10:04 UTC contributes
 only to the 10:00–10:05 and 10:00–10:30 windows. Sliding windows would multiply
@@ -169,3 +169,42 @@ overridden with `HIGH_AMOUNT_THRESHOLD`, `RAPID_TXN_COUNT_THRESHOLD`,
   be a streaming-to-streaming join or keyed state).
 - The 24h velocity windows from the PRD are not in this phase.
 - Amount z-scores, merchant fraud rates, and model scores are out of scope.
+
+### Local Parquet data lake (Phase 3A)
+
+Streaming output is persisted as Parquet on the local filesystem. This is the
+same medallion layout that will later map to S3; there is no AWS, Glue, or
+Athena in this phase.
+
+```text
+data/
+  silver/transactions/     # deduplicated validated transactions
+  gold/account_features/   # finalized 5m/30m account windows
+```
+
+| Layer | Grain | Partitioning | Output mode |
+|---|---|---|---|
+| Silver | one row per `transaction_id` | `event_date` / `event_hour` from `event_timestamp` | append |
+| Gold | `(account_id, window_start, window_end, window_size)` | `window_date` from `window_start` | append |
+
+Gold uses append because file sinks cannot use update mode. A window row is
+written only after the watermark (default 10 minutes) has passed `window_end`.
+The optional console sink still uses update mode so in-progress windows can be
+inspected (`SPARK_CONSOLE_SINK=true`).
+
+Each query has its own checkpoint:
+
+- `.checkpoints/silver-transactions`
+- `.checkpoints/gold-account-features`
+- `.checkpoints/console-features` (console only)
+
+Override with `DATA_LAKE_DIR`, `SILVER_TRANSACTIONS_PATH`, `GOLD_FEATURES_PATH`,
+`SILVER_CHECKPOINT_DIR`, `GOLD_CHECKPOINT_DIR`, and `SPARK_CHECKPOINT_DIR`.
+
+```bash
+python -m streaming.main
+python -m streaming.inspect_lake
+```
+
+`data/` and `.checkpoints/` are gitignored. Bronze/raw archival is deferred
+until S3 is introduced.

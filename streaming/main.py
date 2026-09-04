@@ -5,6 +5,8 @@ Example:
     python -m streaming.main
 
 Requires a JDK (11 or 17) on PATH / JAVA_HOME. Runs in local[*] mode.
+Writes Silver transactions and Gold account features as local Parquet.
+Set SPARK_CONSOLE_SINK=true to also print update-mode window rows.
 """
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ import argparse
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import pyspark
 from pyspark.sql import SparkSession
@@ -23,6 +24,11 @@ from streaming.config import FeatureConfig, StreamingConfig
 from streaming.features import account_window_features, prepare_events
 from streaming.schema import parse_validated_json
 from streaming.session import create_spark_session
+from streaming.sinks import (
+    start_console_query,
+    start_gold_parquet_query,
+    start_silver_parquet_query,
+)
 
 
 def require_java() -> None:
@@ -77,30 +83,26 @@ def read_validated_stream(spark: SparkSession, config: StreamingConfig):
     )
 
 
+def build_prepared_events(raw_value_df, watermark: str):
+    """Parse Kafka JSON, apply UTC event-time watermark, and dedup."""
+    return prepare_events(parse_validated_json(raw_value_df), watermark=watermark)
+
+
 def build_feature_stream(
     raw_value_df, watermark: str, feature_config: FeatureConfig | None = None
 ):
-    events = parse_validated_json(raw_value_df)
-    prepared = prepare_events(events, watermark=watermark)
-    return account_window_features(prepared, feature_config)
+    return account_window_features(build_prepared_events(raw_value_df, watermark), feature_config)
 
 
-def start_console_query(features, checkpoint_dir: str, trigger_seconds: int):
-    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-    return (
-        features.writeStream.outputMode("update")
-        .format("console")
-        .option("truncate", "false")
-        .option("numRows", "40")
-        .option("checkpointLocation", checkpoint_dir)
-        .trigger(processingTime=f"{trigger_seconds} seconds")
-        .start()
-    )
+def _stop_queries(queries) -> None:
+    for query in queries:
+        if query.isActive:
+            query.stop()
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Stream validated transactions and print account behavioral features."
+        description="Stream validated transactions to a local Parquet data lake."
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -120,31 +122,51 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     config = StreamingConfig.from_env()
+    lake = config.lake
     spark = build_spark_session()
     spark.sparkContext.setLogLevel("WARN")
     print(
         f"Streaming {config.validated_topic} @ {config.bootstrap_servers} "
-        f"(watermark={config.watermark}, checkpoint={config.checkpoint_dir}, "
-        f"high_amount={config.features.high_amount_threshold}, "
-        f"rapid_txn={config.features.rapid_txn_count_threshold}, "
-        f"multi_device={config.features.multi_device_threshold}, "
-        f"location_spread_km={config.features.location_spread_km_threshold})",
+        f"(watermark={config.watermark}, "
+        f"silver={lake.silver_transactions_path}, gold={lake.gold_features_path}, "
+        f"console={str(lake.console_sink).lower()})",
         flush=True,
     )
 
     raw = read_validated_stream(spark, config)
-    features = build_feature_stream(raw, config.watermark, config.features)
-    query = start_console_query(features, config.checkpoint_dir, config.trigger_seconds)
+    prepared = build_prepared_events(raw, config.watermark)
+    features = account_window_features(prepared, config.features)
+
+    queries = [
+        start_silver_parquet_query(
+            prepared,
+            lake.silver_transactions_path,
+            lake.silver_checkpoint_dir,
+            config.trigger_seconds,
+        ),
+        start_gold_parquet_query(
+            features,
+            lake.gold_features_path,
+            lake.gold_checkpoint_dir,
+            config.trigger_seconds,
+        ),
+    ]
+    if lake.console_sink:
+        queries.append(
+            start_console_query(features, config.checkpoint_dir, config.trigger_seconds)
+        )
+
     try:
         if args.timeout_seconds > 0:
-            query.awaitTermination(args.timeout_seconds)
-            query.stop()
+            spark.streams.awaitAnyTermination(args.timeout_seconds)
+            _stop_queries(queries)
         else:
-            query.awaitTermination()
+            spark.streams.awaitAnyTermination()
     except KeyboardInterrupt:
         print("streaming stopped", file=sys.stderr)
-        query.stop()
+        _stop_queries(queries)
     finally:
+        _stop_queries(queries)
         spark.stop()
     return 0
 

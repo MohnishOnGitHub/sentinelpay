@@ -1,1 +1,1 @@
-"""Spark Structured Streaming ingestion and account-level behavioral features."""
+"""Spark Structured Streaming ingestion, behavioral features, and local Parquet sinks."""

@@ -70,9 +70,9 @@ def _window_aggregates(
     loc_key = location_grid_key(config.location_grid_decimals)
     aggregated = events.groupBy(F.col("account_id"), F.window(F.col("event_timestamp"), duration)).agg(
         F.count(F.lit(1)).alias("txn_count"),
-        F.sum("amount").alias("amount_sum"),
+        F.sum("amount").cast(DecimalType(12, 2)).alias("amount_sum"),
         F.avg("amount").cast(DecimalType(12, 2)).alias("amount_avg"),
-        F.max("amount").alias("amount_max"),
+        F.max("amount").cast(DecimalType(12, 2)).alias("amount_max"),
         F.size(F.collect_set("merchant_id")).alias("unique_merchants"),
         F.size(F.collect_set("device_id")).alias("unique_devices"),
         F.size(F.collect_set(loc_key)).alias("unique_locations"),

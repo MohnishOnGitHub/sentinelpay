@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -21,20 +19,7 @@ from streaming.config import FeatureConfig
 from streaming.features import account_window_features, prepare_events
 from streaming.risk_signals import apply_transaction_signals
 from streaming.schema import parse_validated_json
-from streaming.session import UTC_TIMEZONE, create_spark_session
-
-
-def _java_runtime_available() -> bool:
-    java = shutil.which("java")
-    if java is None:
-        return False
-    try:
-        output = subprocess.check_output([java, "-version"], stderr=subprocess.STDOUT)
-        text = output.decode("utf-8", "replace")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        text = (getattr(exc, "output", b"") or b"").decode("utf-8", "replace")
-    return "version" in text.lower() and "Unable to locate a Java Runtime" not in text
-
+from streaming.session import UTC_TIMEZONE
 
 pytestmark = pytest.mark.spark
 
@@ -77,28 +62,6 @@ def _ts(hour: int, minute: int) -> datetime:
 
 def _ist(hour: int, minute: int) -> datetime:
     return datetime(2026, 1, 1, hour, minute, tzinfo=timezone(timedelta(hours=5, minutes=30)))
-
-
-@pytest.fixture(scope="module")
-def spark():
-    if not _java_runtime_available():
-        pytest.skip("JDK 11/17 is required for local Spark tests")
-    pytest.importorskip("pyspark")
-
-    try:
-        session = create_spark_session(
-            "sentinelpay-streaming-tests",
-            master="local[1]",
-            extra_configs={
-                "spark.ui.enabled": "false",
-                "spark.sql.shuffle.partitions": "1",
-            },
-        )
-        session.sparkContext.setLogLevel("ERROR")
-    except Exception as exc:
-        pytest.skip(f"local SparkSession is unavailable: {exc}")
-    yield session
-    session.stop()
 
 
 def test_spark_session_timezone_is_utc(spark):
